@@ -19,10 +19,10 @@ def input_bet(wallet):
     while True:
         try:
             amount = int(get_input('Input your amount: '))
+            break
         except ValueError:
             print("That's not a valid number!")
-            continue
-
+            
         if amount < 0 or amount > 500:
             print("Amount must be between 0 and 500!")
             continue
