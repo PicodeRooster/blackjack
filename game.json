@@ -1,0 +1,9 @@
+{
+    "round 1": {
+        "dealer_score": 17,
+        "player_score": 21,
+        "wallet_start": 5000,
+        "wallet_end": 4975,
+        "bet_amount": 25
+    }
+}
