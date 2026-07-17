@@ -23,13 +23,8 @@ cards = {
 deck = []
 for suit in cards["SUITS"]:
     for key, value in cards["VALUES"].items():
-        if key == (1, 11):
-            deck.append({"suit": suit, "rank": value, "value": key})
-        elif isinstance(key, tuple):
-            for name in key:
-                deck.append({"suit": suit, "rank": name, "value": value})
-        else:
-            deck.append({"suit": suit, "rank": value, "value": key})
+        deck.append({"suit": suit, "rank": value, "value": key})
 
 random.shuffle(deck)
 shuffled_deck = deck
+# Example usage to for display: print(shuffled_deck[0]['rank']) //Returns "Ace", for example

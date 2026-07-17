@@ -10,20 +10,11 @@ class Participant:
         card_count = len(self.current_hand) + 1
         self.current_hand[f"card {card_count}"] = self.deck.pop()
     
-    def deal_new_hand(target):
-        if target == "dealer".strip():
-            dealer_hand = {
-                "card 1": shuffled_deck.pop(),
-                "card 2": shuffled_deck.pop()
-            }
-
-        if target == "player".strip():
-            player_hand = {
-                "card 1": shuffled_deck.pop(),
-                "card 2": shuffled_deck.pop()
-            }
-
-        return target 
+    def deal_new_hand(self):
+        self.current_hand = {
+            "card 1": self.deck.pop(),
+            "card 2": self.deck.pop()
+        }
         
     def get_hand_total(self):
         total = 0
