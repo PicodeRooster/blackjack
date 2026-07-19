@@ -2,6 +2,7 @@ from rich import print
 import random
 import sys
 
+game_rounds = 0
 chips_display = f"[bold white][5] [10] [25] [50][/bold white] [bold blue][100] [200] [300][/bold blue] [bold red][400] [500][/bold red]"
 game_options_display = ["SPLIT", "DOUBLE", "DEAL", "BET", "STAND", "QUIT"]
 
@@ -33,11 +34,16 @@ class Cards:
         for suit in self.cards["SUITS"]:
             for rank, value in self.cards["RANKS"]:
                 deck.append({"suit": suit, "rank": rank, "value": value})
-        
-        random.shuffle(deck)
         return deck
+        
+    def shuffle_deck(self):
+        deck = self.build_deck()
+        shuffled_deck = deck.copy()
+        random.shuffle(shuffled_deck)
+        return shuffled_deck
 
-playing_cards = Cards()
+#Note: The word "shoe" is a casino term. It just means "the shared deck between the dealer and the player in Blackjack"
+shoe = Cards().shuffle_deck()
 
 class Participant:
     def __init__(self, deck):
@@ -111,8 +117,6 @@ class Dealer(Participant):
     def must_hit(self, hand_total):
         return hand_total < 17
 
-#Note: The word "shoe" is a casino term. It just means "the shared deck between the dealer and the player in Blackjack"
-shoe = playing_cards.build_deck()
 dealer = Dealer(shoe)
 player = Player(shoe)
 
@@ -162,9 +166,20 @@ def player_economy_ui():
     print(f"Current bet: {player.current_bet}")
     print(f"Wallet: {player.wallet}")
 
-def pregame():
+def welcome():
     print("Welcome to Blackjack!", ":slot_machine:")
-    print("To begin, place your bet.", ":money-mouth_face:")
+
+def maybe_reshuffle(threshold=15):
+    # The shoe is dealt from with deck.pop(); refill it in place (so the
+    # participants' references stay valid) once it runs low.
+    if len(shoe) < threshold:
+        fresh = Cards().shuffle_deck()
+        shoe.clear()
+        shoe.extend(fresh)
+        print("[dim]Reshuffling the shoe...[/dim]")
+
+def take_bet():
+    print("Place your bet.", ":money-mouth_face:")
 
     player.current_bet = input_bet()
     player.wallet -= player.current_bet
@@ -190,6 +205,9 @@ def render_hand(hand):
     return ", ".join(f"{card['suit']}{card['rank']}" for card in hand)
 
 def start_of_round():
+    global game_rounds
+    game_rounds += 1
+    print(f"--- ROUND {game_rounds} ---")
     up = dealer.current_hand[1]  # dealer's face-up card
     print("---")
     print("Dealer's hand:")
@@ -242,6 +260,19 @@ def play_current_hand():
         else:
             print("Not a valid option.")
 
+def is_blackjack(hand):
+    # A "natural" — 21 on the opening two cards.
+    return len(hand) == 2 and get_total(hand) == 21
+
+def get_total(hand):
+    # Small helper so free functions don't need a participant instance.
+    total = sum(card["value"] for card in hand)
+    ace_count = sum(1 for card in hand if card["value"] == 11)
+    while total > 21 and ace_count > 0:
+        total -= 10
+        ace_count -= 1
+    return total
+
 def dealer_turn():
     print("---")
     print(f"Dealer's hand: {render_hand(dealer.current_hand)}  (total {dealer.get_hand_total()})")
@@ -269,14 +300,40 @@ def settle():
         else:
             print(f"[red]{label}: lose {bet}[/red]")
 
-def game():
-    pregame()
+def settle_naturals(player_natural, dealer_natural):
+    # Resolve a round where at least one side had a natural blackjack.
+    bet = player.bets[0]
+    print("---")
+    if player_natural and dealer_natural:
+        player.wallet += bet                       # both blackjack — push, refund stake
+        print("Both blackjack — push.")
+    elif player_natural:
+        winnings = bet + bet // 2                   # 3:2 payout
+        player.wallet += bet + winnings             # stake back + winnings
+        player.rounds_won += 1
+        print(f"[green]Blackjack! You win {winnings} (3:2).[/green]")
+    else:
+        print(f"[red]Dealer blackjack — you lose {bet}.[/red]")
 
-    player.deal_new_hand()
+def play_round():
+    maybe_reshuffle()
+    take_bet()
+
     player.bets = [player.current_bet]
+    player.active_hand = 0
+    player.deal_new_hand()
     dealer.deal_new_hand()
-
     start_of_round()
+
+    # Check for naturals before the play phase.
+    player_natural = is_blackjack(player.hands[0])
+    dealer_natural = is_blackjack(dealer.current_hand)
+    if player_natural or dealer_natural:
+        print("---")
+        print(f"Dealer's hand: {render_hand(dealer.current_hand)}  (total {dealer.get_hand_total()})")
+        settle_naturals(player_natural, dealer_natural)
+        player_economy_ui()
+        return
 
     # Player turn — iterate every hand. A split inserts a new hand at active_hand+1,
     # so the while-over-length naturally picks it up.
@@ -285,63 +342,28 @@ def game():
         play_current_hand()
         player.active_hand += 1
 
-    dealer_turn()
+    # Dealer only plays if at least one player hand is still alive.
+    if any(player.get_hand_total(hand) <= 21 for hand in player.hands):
+        dealer_turn()
+
     settle()
     player_economy_ui()
 
+def game():
+    welcome()
+    while player.wallet > 0:
+        play_round()
+
+        if player.wallet <= 0:
+            print(f"[red]Wallet: {player.wallet}. You're out of money![/red]")
+            print(f"[red]Game Over![/red]")
+            break
+
+        print("---")
+        if ask_yes_no("Play another round? [Y/N] ") == "n":
+            exit_game()
+
+    print(f"You won {player.rounds_won} round(s). Thanks for playing!")
+
 if __name__ == "__main__":
-    game()
-
-'''    
-    check values for player
-    if card 1 and card 2 have the same 'value', show SPLIT option
-    if get_hand_total(player) < 21, show game_options_display
-    if get_hand_total(player) == 21, BLACKJACK
-    if STAND and get_hand_total(player) < 21:
-        if must_hit(dealer, get_hand_total(dealer)) == FALSE
-            deal new card for dealer until at least 17 True
-        if player hand total > 21:
-            BUST, dealer wins
-            remove chips from wallet
-        if dealer hand total > 21:
-            player wins
-            add chips to wallet
-        if dealer hand total > player hand total:
-            dealer wins round
-            remove chips from wallet
-        if dealer hand total < player hand total:
-            player winds round
-            add chips to wallet
-        if dealer hand total == player hand total:
-            PUSH
-            end round
-            do nothing
-
-    
-
-
-One usage note: call it as player.deal_new_hand() and dealer.deal_new_hand() at the start of a round — not deal_new_cards() for the first deal, since deal_new_hand resets current_hand to a fresh 2-card hand, while deal_new_cards assumes a hand already exists and adds one card to it (for hits).
-
-
-def confirm_initial_bet(wallet, amount):
-    player_economy_ui
-    print(chips)
-
-    while True:
-        try:
-            answer = ask_yes_no('Would you like to modify the bet? [Y/N] ')
-            if ask_yes_no('Start game? [Y/N] ') == "y":
-                amount = input_bet(wallet)
-
-            player.wallet = wallet - amount
-            player_economy_ui()
-            
-            else:
-                ask_yes_no('Would you like to modify the bet? [Y/N] ')
-                print(chips)
-                break
-        else:
-        
-
-        except:
-'''            
+    game()            
